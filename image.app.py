@@ -5,62 +5,74 @@ from bs4 import BeautifulSoup
 from PIL import Image
 import imagehash
 import io
+from urllib.parse import urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# --- Configuration ---
+CSV_FILE = "columbiadoctors_internal_all.csv"  # Updated filename
+TARGET_COLUMN = "URL"                          # Ensure this matches your CSV header!
+
 def get_image_hash(image):
+    """Generates a perceptual fingerprint (hash) for an image."""
     return imagehash.phash(image)
 
 def get_columbia_doctor_image(url):
-    """
-    Specific logic for ColumbiaDoctors.org structure.
-    Targets the main profile image to avoid scanning logos/icons.
-    """
+    """Targets the specific HTML structure of ColumbiaDoctors profile pages."""
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Look for the primary profile image 
-        # (Columbia typically uses specific classes for doctor headshots)
-        img_tag = soup.find('img', {'class': 'field-name-field-image'}) or \
-                  soup.find('div', {'class': 'provider-image'}).find('img') or \
-                  soup.find('img', {'alt': lambda x: x and 'Profile photo' in x})
+        # Priority 1: The specific Columbia 'field-name-field-image' class
+        # Priority 2: Standard provider image containers
+        # Priority 3: First meaningful image with an alt tag
+        img_tag = soup.select_one('.field-name-field-image img') or \
+                  soup.select_one('.provider-image img') or \
+                  soup.find('img', alt=True)
         
         if img_tag and img_tag.get('src'):
-            return img_tag.get('src')
+            return urljoin(url, img_tag.get('src'))
     except:
         return None
     return None
 
-# --- UI ---
-st.title("ColumbiaDoctors Image Matcher 🩺")
+# --- Streamlit UI Setup ---
+st.set_page_config(page_title="Columbia Image Matcher", layout="wide")
+st.title("ColumbiaDoctors Precision Matcher 🩺")
+st.markdown("Upload a photo to see if that doctor exists in the internal database.")
 
-# Upload the target image to find
-uploaded_image = st.file_uploader("1. Upload Target Doctor Image", type=['jpg', 'jpeg', 'png'])
+# Load the hard-coded internal CSV
+@st.cache_data
+def load_internal_data():
+    try:
+        data = pd.read_csv(CSV_FILE)
+        return data
+    except FileNotFoundError:
+        st.error(f"Critical Error: '{CSV_FILE}' was not found in the GitHub repository.")
+        return None
 
-# Upload the CSV from your previous project
-uploaded_csv = st.file_uploader("2. Upload ColumbiaDoctors CSV", type=['csv'])
+df = load_internal_data()
 
-if uploaded_image and uploaded_csv:
-    df = pd.read_csv(uploaded_csv)
-    # Automatically find the URL column
-    url_col = next((col for col in df.columns if 'url' in col.lower() or 'link' in col.lower()), None)
+if df is not None:
+    st.sidebar.info(f"Database Loaded: {len(df)} profiles.")
     
-    if not url_col:
-        st.error("Could not find a 'URL' column in your CSV.")
-    else:
-        st.success(f"Found {len(df)} doctor profiles to check.")
+    uploaded_image = st.file_uploader("Upload Doctor Photo", type=['jpg', 'jpeg', 'png'])
+    
+    if uploaded_image:
+        target_img = Image.open(uploaded_image).convert('RGB')
+        st.image(target_img, caption="Searching for this individual...", width=200)
         
-        if st.button("Start Precision Match"):
-            target_hash = get_image_hash(Image.open(uploaded_image).convert('RGB'))
+        if st.button("🔎 Scan Internal Database"):
+            target_hash = get_image_hash(target_img)
             matches = []
             
             progress_bar = st.progress(0)
             status = st.empty()
             
-            # Use ThreadPool to check images quickly
+            # Using ThreadPool for parallel processing (speed)
             with ThreadPoolExecutor(max_workers=10) as executor:
-                futures = {executor.submit(get_columbia_doctor_image, row[url_col]): row for _, row in df.iterrows()}
+                # Map the scraping function to every URL in the hard-coded CSV
+                futures = {executor.submit(get_columbia_doctor_image, row[TARGET_COLUMN]): row for _, row in df.iterrows()}
                 
                 for i, future in enumerate(as_completed(futures)):
                     row = futures[future]
@@ -68,25 +80,36 @@ if uploaded_image and uploaded_csv:
                     
                     if img_src:
                         try:
-                            # Download and compare
-                            img_data = requests.get(img_src, stream=True).content
+                            # Compare the found web image to our target
+                            img_data = requests.get(img_src, stream=True, timeout=5).content
                             found_img = Image.open(io.BytesIO(img_data)).convert('RGB')
-                            if (target_hash - get_image_hash(found_img)) <= 10:
-                                matches.append({"Doctor": row.get('Name', 'Unknown'), "URL": row[url_col], "Image": img_src})
+                            
+                            # Hamming distance <= 12 is a solid match for web-compressed photos
+                            if (target_hash - get_image_hash(found_img)) <= 12:
+                                matches.append({
+                                    "Name": row.get('Name', 'Doctor'), 
+                                    "URL": row[TARGET_COLUMN], 
+                                    "Image": img_src
+                                })
                         except:
                             continue
                     
+                    # Update UI progress
                     progress_bar.progress((i + 1) / len(df))
-                    status.text(f"Processed {i+1}/{len(df)} doctors...")
+                    status.text(f"Analyzing profile {i+1} of {len(df)}...")
 
+            # --- Results Display ---
             if matches:
-                st.write("### 🚨 Matches Found!")
+                st.balloons()
+                st.success(f"Match found! Found {len(matches)} instance(s).")
                 for m in matches:
-                    col1, col2 = st.columns([1, 3])
-                    with col1:
-                        st.image(m['Image'])
-                    with col2:
-                        st.write(f"**{m['Doctor']}**")
-                        st.write(f"[View Profile]({m['URL']})")
+                    with st.container():
+                        col1, col2 = st.columns([1, 4])
+                        with col1:
+                            st.image(m['Image'], use_container_width=True)
+                        with col2:
+                            st.subheader(m['Name'])
+                            st.write(f"🔗 [View Official Profile]({m['URL']})")
+                        st.divider()
             else:
-                st.info("No matches found in the provided CSV list.")
+                st.warning("No visual match found in the database. Ensure the photo is clear.")
