@@ -9,7 +9,7 @@ from urllib.parse import urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- Configuration ---
-CSV_FILE = "columbiadoctors_internal_all.csv"  # Updated filename
+CSV_FILE = "columbiadoctors_internal_all"  # Updated filename
 TARGET_COLUMN = "URL"                          # Ensure this matches your CSV header!
 
 def get_image_hash(image):
