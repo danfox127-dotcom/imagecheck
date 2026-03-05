@@ -26,7 +26,7 @@ def get_columbia_doctor_image(url):
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Specific Columbia image selectors
+        # Priority selectors for Columbia headshots
         img_tag = soup.select_one('.field-name-field-image img') or \
                   soup.select_one('.provider-image img') or \
                   soup.find('img', alt=True)
@@ -53,20 +53,20 @@ def load_internal_data():
 df = load_internal_data()
 
 if df is not None:
-    # --- UPDATED AUTO-DETECT ---
-    # Now includes 'address' which is common in Screaming Frog exports
-    url_col = next((c for c in df.columns if c.lower() in ['address', 'url', 'link', 'url encoded address']), None)
+    # Logic to find the correct columns based on your Screaming Frog export
+    url_col = next((c for c in df.columns if c.lower() in ['address', 'url', 'link']), None)
+    name_col = next((c for c in df.columns if c.lower() in ['name', 'title 1']), None)
     
     if not url_col:
-        st.error(f"❌ Could not find a URL/Address column. Columns found: {list(df.columns)[:5]}...")
+        st.error(f"❌ Missing 'Address' column. Found: {list(df.columns)[:5]}...")
     else:
-        st.sidebar.success(f"✅ Mapping to column: '{url_col}'")
+        st.sidebar.success(f"✅ Mapping to: '{url_col}'")
         
         uploaded_image = st.file_uploader("Upload Doctor Photo", type=['jpg', 'jpeg', 'png'])
         
         if uploaded_image:
             target_img = Image.open(uploaded_image).convert('RGB')
-            st.image(target_img, caption="Searching for matches...", width=200)
+            st.image(target_img, caption="Searching...", width=200)
             
             tolerance = st.sidebar.slider("Match Sensitivity", 0, 25, 12)
             
@@ -90,7 +90,30 @@ if df is not None:
                                 found_img = Image.open(io.BytesIO(img_data)).convert('RGB')
                                 
                                 if (target_hash - get_image_hash(found_img)) <= tolerance:
-                                    # Use 'Title 1' as the Name if 'Name' column doesn't exist
-                                    doc_name = row.get('Name', row.get('Title 1', 'Doctor Profile'))
+                                    # Fallback logic for doctor name
+                                    display_name = row[name_col] if name_col else "Doctor Profile"
                                     matches.append({
-                                        "
+                                        "Name": display_name, 
+                                        "URL": row[url_col], 
+                                        "Image": img_src
+                                    })
+                            except:
+                                continue
+                        
+                        progress_bar.progress((i + 1) / len(df))
+                        status.text(f"Processed {i+1} of {len(df)}...")
+
+                if matches:
+                    st.balloons()
+                    st.success(f"Found {len(matches)} potential match(es)!")
+                    for m in matches:
+                        with st.container():
+                            c1, c2 = st.columns([1, 4])
+                            with c1:
+                                st.image(m['Image'], use_container_width=True)
+                            with c2:
+                                st.subheader(m['Name'])
+                                st.write(f"🔗 [View Official Profile]({m['URL']})")
+                            st.divider()
+                else:
+                    st.warning("No visual match found.")
