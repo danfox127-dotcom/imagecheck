@@ -1,112 +1,92 @@
 import streamlit as st
+import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from PIL import Image
 import imagehash
 import io
-from urllib.parse import urljoin, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# --- Logic Functions ---
-
 def get_image_hash(image):
-    """Generates the perceptual hash."""
     return imagehash.phash(image)
 
-def is_internal(base_url, link_url):
-    """Ensures the crawler stays on the target domain."""
-    base_netloc = urlparse(base_url).netloc
-    link_netloc = urlparse(link_url).netloc
-    return link_netloc == '' or link_netloc == base_netloc
-
-def process_page(url, target_hash, tolerance):
-    """Function run by each thread to scan a single page."""
-    page_matches = []
-    new_links = set()
+def get_columbia_doctor_image(url):
+    """
+    Specific logic for ColumbiaDoctors.org structure.
+    Targets the main profile image to avoid scanning logos/icons.
+    """
     try:
-        # User-Agent makes the request look like a real browser
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Look for the primary profile image 
+        # (Columbia typically uses specific classes for doctor headshots)
+        img_tag = soup.find('img', {'class': 'field-name-field-image'}) or \
+                  soup.find('div', {'class': 'provider-image'}).find('img') or \
+                  soup.find('img', {'alt': lambda x: x and 'Profile photo' in x})
+        
+        if img_tag and img_tag.get('src'):
+            return img_tag.get('src')
+    except:
+        return None
+    return None
 
-        # Find images
-        for img in soup.find_all('img'):
-            src = img.get('src')
-            if not src: continue
-            img_url = urljoin(url, src)
-            try:
-                img_data = requests.get(img_url, headers=headers, stream=True, timeout=5).content
-                web_img = Image.open(io.BytesIO(img_data)).convert('RGB')
-                if (target_hash - get_image_hash(web_img)) <= tolerance:
-                    page_matches.append({"page": url, "img": img_url})
-            except:
-                continue
+# --- UI ---
+st.title("ColumbiaDoctors Image Matcher 🩺")
 
-        # Find links for the next batch
-        for a in soup.find_all('a', href=True):
-            link = urljoin(url, a['href'])
-            if is_internal(url, link):
-                # Clean URL (remove fragments like #section1)
-                clean_link = link.split('#')[0].rstrip('/')
-                new_links.add(clean_link)
+# Upload the target image to find
+uploaded_image = st.file_uploader("1. Upload Target Doctor Image", type=['jpg', 'jpeg', 'png'])
 
-    except Exception as e:
-        pass # Silent fail for broken pages
+# Upload the CSV from your previous project
+uploaded_csv = st.file_uploader("2. Upload ColumbiaDoctors CSV", type=['csv'])
+
+if uploaded_image and uploaded_csv:
+    df = pd.read_csv(uploaded_csv)
+    # Automatically find the URL column
+    url_col = next((col for col in df.columns if 'url' in col.lower() or 'link' in col.lower()), None)
     
-    return page_matches, new_links
-
-# --- Streamlit UI ---
-
-st.set_page_config(page_title="Image Hunter Pro", layout="wide")
-st.title("Image Hunter Pro 🛰️")
-st.sidebar.header("Settings")
-
-uploaded_file = st.sidebar.file_uploader("1. Upload Image", type=['png', 'jpg', 'jpeg'])
-domain_url = st.sidebar.text_input("2. Target Domain URL")
-max_p = st.sidebar.slider("Max pages", 5, 200, 50)
-threads = st.sidebar.slider("Parallel Threads", 1, 10, 5)
-tolerance = st.sidebar.slider("Match Sensitivity (Lower = Stricter)", 0, 20, 10)
-
-if st.sidebar.button("Launch Domain Scan") and uploaded_file and domain_url:
-    target_img = Image.open(uploaded_file).convert('RGB')
-    t_hash = get_image_hash(target_img)
-    
-    visited = set()
-    to_visit = {domain_url.rstrip('/')}
-    all_matches = []
-    
-    status_text = st.empty()
-    progress_bar = st.progress(0)
-    
-    # Using ThreadPoolExecutor for speed
-    with ThreadPoolExecutor(max_workers=threads) as executor:
-        while to_visit and len(visited) < max_p:
-            # Batch process the current 'to_visit' list
-            current_batch = list(to_visit)[:threads]
-            for url in current_batch:
-                to_visit.remove(url)
-                visited.add(url)
-            
-            futures = {executor.submit(process_page, url, t_hash, tolerance): url for url in current_batch}
-            
-            for future in as_completed(futures):
-                matches, found_links = future.result()
-                all_matches.extend(matches)
-                
-                # Add new links that haven't been visited or queued
-                for link in found_links:
-                    if link not in visited:
-                        to_visit.add(link)
-                
-                status_text.text(f"Scanned {len(visited)} / {max_p} pages...")
-                progress_bar.progress(min(len(visited) / max_p, 1.0))
-
-    if all_matches:
-        st.success(f"Done! Found {len(all_matches)} matches.")
-        cols = st.columns(3)
-        for i, res in enumerate(all_matches):
-            with cols[i % 3]:
-                st.image(res['img'], use_container_width=True)
-                st.caption(f"Found on: {res['page']}")
+    if not url_col:
+        st.error("Could not find a 'URL' column in your CSV.")
     else:
-        st.warning("Scan complete. No matches found.")
+        st.success(f"Found {len(df)} doctor profiles to check.")
+        
+        if st.button("Start Precision Match"):
+            target_hash = get_image_hash(Image.open(uploaded_image).convert('RGB'))
+            matches = []
+            
+            progress_bar = st.progress(0)
+            status = st.empty()
+            
+            # Use ThreadPool to check images quickly
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = {executor.submit(get_columbia_doctor_image, row[url_col]): row for _, row in df.iterrows()}
+                
+                for i, future in enumerate(as_completed(futures)):
+                    row = futures[future]
+                    img_src = future.result()
+                    
+                    if img_src:
+                        try:
+                            # Download and compare
+                            img_data = requests.get(img_src, stream=True).content
+                            found_img = Image.open(io.BytesIO(img_data)).convert('RGB')
+                            if (target_hash - get_image_hash(found_img)) <= 10:
+                                matches.append({"Doctor": row.get('Name', 'Unknown'), "URL": row[url_col], "Image": img_src})
+                        except:
+                            continue
+                    
+                    progress_bar.progress((i + 1) / len(df))
+                    status.text(f"Processed {i+1}/{len(df)} doctors...")
+
+            if matches:
+                st.write("### 🚨 Matches Found!")
+                for m in matches:
+                    col1, col2 = st.columns([1, 3])
+                    with col1:
+                        st.image(m['Image'])
+                    with col2:
+                        st.write(f"**{m['Doctor']}**")
+                        st.write(f"[View Profile]({m['URL']})")
+            else:
+                st.info("No matches found in the provided CSV list.")
