@@ -1,1 +1,5 @@
-pip install streamlit requests beautifulsoup4 Pillow imagehash
+streamlit
+requests
+beautifulsoup4
+Pillow
+ImageHash
