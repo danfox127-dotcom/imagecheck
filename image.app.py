@@ -15,7 +15,6 @@ TARGET_COLUMN = "URL"                          # Ensure this matches your CSV he
 def get_image_hash(image):
     """Generates a perceptual fingerprint (hash) for an image."""
     return imagehash.phash(image)
-
 def get_columbia_doctor_image(url):
     """Targets the specific HTML structure of ColumbiaDoctors profile pages."""
     try:
