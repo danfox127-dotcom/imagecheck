@@ -18,17 +18,15 @@ visible_files = os.listdir(".")
 st.sidebar.write("Files in Repo:", visible_files)
 
 def get_image_hash(image):
-    """Generates a perceptual fingerprint."""
     return imagehash.phash(image)
 
 def get_columbia_doctor_image(url):
-    """Specific scraper for ColumbiaDoctors.org profile images."""
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.text, 'parser.html' if 'parser.html' in str(BeautifulSoup) else 'html.parser')
+        soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Look for the doctor's headshot specifically
+        # Specific Columbia image selectors
         img_tag = soup.select_one('.field-name-field-image img') or \
                   soup.select_one('.provider-image img') or \
                   soup.find('img', alt=True)
@@ -46,7 +44,6 @@ st.title("ColumbiaDoctors Precision Matcher 🩺")
 def load_internal_data():
     try:
         data = pd.read_csv(CSV_FILE)
-        # Clean column names
         data.columns = [c.strip() for c in data.columns]
         return data
     except Exception as e:
@@ -56,13 +53,14 @@ def load_internal_data():
 df = load_internal_data()
 
 if df is not None:
-    # Auto-detect the URL column
-    url_col = next((c for c in df.columns if c.lower() in ['url', 'link']), None)
+    # --- UPDATED AUTO-DETECT ---
+    # Now includes 'address' which is common in Screaming Frog exports
+    url_col = next((c for c in df.columns if c.lower() in ['address', 'url', 'link', 'url encoded address']), None)
     
     if not url_col:
-        st.error(f"❌ URL column missing. Columns: {list(df.columns)}")
+        st.error(f"❌ Could not find a URL/Address column. Columns found: {list(df.columns)[:5]}...")
     else:
-        st.sidebar.success(f"✅ Using column: '{url_col}'")
+        st.sidebar.success(f"✅ Mapping to column: '{url_col}'")
         
         uploaded_image = st.file_uploader("Upload Doctor Photo", type=['jpg', 'jpeg', 'png'])
         
@@ -70,8 +68,7 @@ if df is not None:
             target_img = Image.open(uploaded_image).convert('RGB')
             st.image(target_img, caption="Searching for matches...", width=200)
             
-            # Match Sensitivity Slider
-            tolerance = st.sidebar.slider("Match Sensitivity", 0, 25, 12, help="Lower is stricter")
+            tolerance = st.sidebar.slider("Match Sensitivity", 0, 25, 12)
             
             if st.button("🔎 Scan Internal Database"):
                 target_hash = get_image_hash(target_img)
@@ -80,7 +77,6 @@ if df is not None:
                 progress_bar = st.progress(0)
                 status = st.empty()
                 
-                # Multi-threaded processing
                 with ThreadPoolExecutor(max_workers=10) as executor:
                     futures = {executor.submit(get_columbia_doctor_image, row[url_col]): row for _, row in df.iterrows()}
                     
@@ -94,29 +90,7 @@ if df is not None:
                                 found_img = Image.open(io.BytesIO(img_data)).convert('RGB')
                                 
                                 if (target_hash - get_image_hash(found_img)) <= tolerance:
+                                    # Use 'Title 1' as the Name if 'Name' column doesn't exist
+                                    doc_name = row.get('Name', row.get('Title 1', 'Doctor Profile'))
                                     matches.append({
-                                        "Name": row.get('Name', row.get('name', 'Doctor')), 
-                                        "URL": row[url_col], 
-                                        "Image": img_src
-                                    })
-                            except:
-                                continue
-                        
-                        progress_bar.progress((i + 1) / len(df))
-                        status.text(f"Scanning {i+1}/{len(df)}...")
-
-                # --- Results Display ---
-                if matches:
-                    st.balloons()
-                    st.success(f"Found {len(matches)} potential match(es)!")
-                    for m in matches:
-                        with st.container():
-                            c1, c2 = st.columns([1, 4])
-                            with c1:
-                                st.image(m['Image'], use_container_width=True)
-                            with c2:
-                                st.subheader(m['Name'])
-                                st.write(f"🔗 [Profile]({m['URL']})")
-                            st.divider()
-                else:
-                    st.warning("No visual match found. Try increasing the 'Match Sensitivity' in the sidebar.")
+                                        "
