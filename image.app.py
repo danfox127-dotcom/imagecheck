@@ -5,24 +5,17 @@ from bs4 import BeautifulSoup
 from PIL import Image
 import imagehash
 import io
-import os  # Added for debugging
+import os
 from urllib.parse import urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- Configuration ---
 CSV_FILE = "columbiadoctors_internal_all.csv" 
-TARGET_COLUMN = "URL"
 
-# --- DEBUG SECTION ---
+# --- Debug Section ---
 st.sidebar.subheader("System Debugger")
 visible_files = os.listdir(".")
-st.sidebar.write("Files found in Repo:", visible_files)
-
-if CSV_FILE not in visible_files:
-    st.sidebar.error(f"❌ '{CSV_FILE}' is MISSING from the list above!")
-else:
-    st.sidebar.success(f"✅ '{CSV_FILE}' found and ready.")
-# ---------------------
+st.sidebar.write("Files in Repo:", visible_files)
 
 def get_image_hash(image):
     return imagehash.phash(image)
@@ -50,7 +43,10 @@ st.title("ColumbiaDoctors Precision Matcher 🩺")
 @st.cache_data
 def load_internal_data():
     try:
-        return pd.read_csv(CSV_FILE)
+        data = pd.read_csv(CSV_FILE)
+        # Clean the column names (remove whitespace and make lowercase for easy finding)
+        data.columns = [c.strip() for c in data.columns]
+        return data
     except Exception as e:
         st.error(f"Error loading CSV: {e}")
         return None
@@ -58,50 +54,56 @@ def load_internal_data():
 df = load_internal_data()
 
 if df is not None:
-    uploaded_image = st.file_uploader("Upload Doctor Photo", type=['jpg', 'jpeg', 'png'])
+    # --- AUTO-DETECT URL COLUMN ---
+    # This looks for any column named 'url' or 'link' regardless of case
+    url_col = next((c for c in df.columns if c.lower() in ['url', 'link']), None)
     
-    if uploaded_image:
-        target_img = Image.open(uploaded_image).convert('RGB')
-        st.image(target_img, caption="Target Image", width=200)
+    if not url_col:
+        st.error(f"❌ Could not find a 'URL' column. Available columns are: {list(df.columns)}")
+    else:
+        st.sidebar.success(f"✅ Using column: '{url_col}'")
         
-        if st.button("🔎 Scan Database"):
-            target_hash = get_image_hash(target_img)
-            matches = []
+        uploaded_image = st.file_uploader("Upload Doctor Photo", type=['jpg', 'jpeg', 'png'])
+        
+        if uploaded_image:
+            target_img = Image.open(uploaded_image).convert('RGB')
+            st.image(target_img, caption="Target Image", width=200)
             
-            progress_bar = st.progress(0)
-            status = st.empty()
+            # --- Added Sensitivity Slider ---
+            tolerance = st.sidebar.slider("Match Sensitivity", 0, 25, 12, help="Lower = Stricter Match")
             
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                futures = {executor.submit(get_columbia_doctor_image, row[TARGET_COLUMN]): row for _, row in df.iterrows()}
+            if st.button("🔎 Scan Database"):
+                target_hash = get_image_hash(target_img)
+                matches = []
                 
-                for i, future in enumerate(as_completed(futures)):
-                    row = futures[future]
-                    img_src = future.result()
+                progress_bar = st.progress(0)
+                status = st.empty()
+                
+                with ThreadPoolExecutor(max_workers=10) as executor:
+                    # Use the auto-detected url_col here
+                    futures = {executor.submit(get_columbia_doctor_image, row[url_col]): row for _, row in df.iterrows()}
                     
-                    if img_src:
-                        try:
-                            img_data = requests.get(img_src, stream=True, timeout=5).content
-                            found_img = Image.open(io.BytesIO(img_data)).convert('RGB')
-                            
-                            if (target_hash - get_image_hash(found_img)) <= 12:
-                                matches.append({
-                                    "Name": row.get('Name', 'Doctor'), 
-                                    "URL": row[TARGET_COLUMN], 
-                                    "Image": img_src
-                                })
-                        except:
-                            continue
-                    
-                    progress_bar.progress((i + 1) / len(df))
-                    status.text(f"Scanning {i+1}/{len(df)}...")
+                    for i, future in enumerate(as_completed(futures)):
+                        row = futures[future]
+                        img_src = future.result()
+                        
+                        if img_src:
+                            try:
+                                img_data = requests.get(img_src, stream=True, timeout=5).content
+                                found_img = Image.open(io.BytesIO(img_data)).convert('RGB')
+                                
+                                if (target_hash - get_image_hash(found_img)) <= tolerance:
+                                    matches.append({
+                                        "Name": row.get('Name', row.get('name', 'Doctor')), 
+                                        "URL": row[url_col], 
+                                        "Image": img_src
+                                    })
+                            except:
+                                continue
+                        
+                        progress_bar.progress((i + 1) / len(df))
+                        status.text(f"Scanning {i+1}/{len(df)}...")
 
-            if matches:
-                st.balloons()
-                for m in matches:
-                    col1, col2 = st.columns([1, 4])
-                    col1.image(m['Image'])
-                    col2.subheader(m['Name'])
-                    col2.write(f"🔗 [Profile]({m['URL']})")
-                    st.divider()
-            else:
-                st.warning("No match found.")
+                if matches:
+                    st.balloons()
+                    for m in matches:
