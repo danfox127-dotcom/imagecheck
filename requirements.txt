@@ -3,4 +3,4 @@ requests
 beautifulsoup4
 Pillow
 ImageHash
-"columbiadoctors_images.csv"
+columbiadoctors_images.csv
