@@ -8,7 +8,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- Configuration ---
-CSV_FILE = "columbiadoctors_images.csv"
+CSV_FILE = "columbiadoctors_images_used_3_6.csv"
 
 # --- Sidebar Debug ---
 st.sidebar.subheader("System Debugger")
