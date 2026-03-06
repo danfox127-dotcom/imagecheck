@@ -8,7 +8,8 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- Configuration ---
-CSV_FILE = "columbiadoctors_images_used_3_6.csv"
+# UPDATE THIS LINE to match file #7 exactly!
+CSV_FILE = "columbiadoctors_images_used_3_6.csv" 
 
 # --- Sidebar Debug ---
 st.sidebar.subheader("System Debugger")
@@ -16,7 +17,6 @@ visible_files = os.listdir(".")
 st.sidebar.write("Files in Repo:", visible_files)
 
 # --- Smart Filtering ---
-# Add any other words here that you notice in junk image URLs
 EXCLUSION_KEYWORDS = [
     'logo', 'icon', 'facebook', 'twitter', 'instagram', 
     'linkedin', 'youtube', 'bg', 'background', 'spacer', 
@@ -30,18 +30,12 @@ def is_valid_image_url(url):
     """Checks if an image URL is likely a real photo and not a site asset."""
     if not isinstance(url, str): 
         return False
-    
     url_lower = url.lower()
-    
-    # 1. Skip SVGs (always graphics/logos)
     if url_lower.endswith('.svg'): 
         return False 
-        
-    # 2. Skip if it contains our exclusion keywords
     for keyword in EXCLUSION_KEYWORDS:
         if keyword in url_lower:
             return False
-            
     return True
 
 # --- Main App ---
@@ -61,14 +55,17 @@ def load_image_data():
 df = load_image_data()
 
 if df is not None:
-    # Auto-detect the right columns from Screaming Frog
-    img_col = next((c for c in df.columns if c.lower() in ['source', 'image url', 'src', 'url']), None)
-    page_col = next((c for c in df.columns if c.lower() in ['address', 'destination', 'page url']), None)
+    # --- UPDATED COLUMN DETECTION ---
+    # Now looks for 'address' as the primary image URL column
+    img_col = next((c for c in df.columns if c.lower() in ['address', 'source', 'image url', 'src', 'url']), None)
+    
+    # Looks for a page column, but makes sure it doesn't accidentally grab 'address' twice
+    page_col = next((c for c in df.columns if c.lower() in ['destination', 'page url'] and c != img_col), None)
 
     if not img_col:
         st.error(f"❌ Could not find an image source column. Found: {list(df.columns)[:5]}...")
     else:
-        # Apply our Smart Filter to the unique images
+        # Apply Smart Filter
         all_unique_images = df[img_col].unique()
         filtered_images = [url for url in all_unique_images if is_valid_image_url(url)]
         
@@ -108,11 +105,10 @@ if df is not None:
                     for i, future in enumerate(as_completed(futures)):
                         img_url = futures[future]
                         if future.result():
-                            # Find where this image lives
-                            page_url = df[df[img_col] == img_url][page_col].values[0] if page_col else "Unknown Page"
+                            # If page_col exists, grab it. Otherwise, say "Check Screaming Frog".
+                            page_url = df[df[img_col] == img_url][page_col].values[0] if page_col else "See Screaming Frog 'Inlinks' for page source"
                             matches.append({"img": img_url, "page": page_url})
                         
-                        # Update progress bar smoothly
                         progress_bar.progress((i + 1) / len(filtered_images))
                         status.text(f"Scanning image {i+1} of {len(filtered_images)}...")
 
@@ -127,7 +123,10 @@ if df is not None:
                                 st.image(m['img'], use_container_width=True)
                             with col2:
                                 st.write(f"**Image Source:** {m['img']}")
-                                st.write(f"🔗 [Found on Page]({m['page']})")
+                                if m['page'].startswith("http"):
+                                    st.write(f"🔗 [Found on Page]({m['page']})")
+                                else:
+                                    st.write(f"📄 *{m['page']}*")
                             st.divider()
                 else:
                     st.warning("No matches found. Try increasing the Match Sensitivity.")
