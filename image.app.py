@@ -26,16 +26,31 @@ EXCLUSION_KEYWORDS = [
 def get_image_hash(image):
     return imagehash.phash(image)
 
-def is_valid_image_url(url):
-    """Checks if an image URL is likely a real photo and not a site asset."""
+def is_valid_content_image(url):
+    """Strictly filters for content images (JPG, PNG, WEBP) and ignores structural assets."""
     if not isinstance(url, str): 
         return False
+    
     url_lower = url.lower()
-    if url_lower.endswith('.svg'): 
+    
+    # 1. Clean the URL (Columbia adds query strings like ?itok=... to the end of images)
+    # We need to strip that off to check the real file extension
+    clean_url = url_lower.split('?')[0]
+    
+    # 2. Strict Whitelist: If it's not one of these, instantly ignore it.
+    if not clean_url.endswith(('.jpg', '.jpeg', '.png', '.webp')):
         return False 
+        
+    # 3. Keyword Blacklist: Even if it is a PNG, skip it if it's named "footer-logo.png"
+    EXCLUSION_KEYWORDS = [
+        'logo', 'icon', 'facebook', 'twitter', 'instagram', 
+        'linkedin', 'youtube', 'bg', 'background', 'spacer', 
+        'button', 'sprite', 'footer', 'header', 'avatar'
+    ]
     for keyword in EXCLUSION_KEYWORDS:
         if keyword in url_lower:
             return False
+            
     return True
 
 # --- Main App ---
