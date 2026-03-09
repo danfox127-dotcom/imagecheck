@@ -131,17 +131,31 @@ if df is not None:
                                 st.write(f"**Live Image Source:** {m['img']}")
                                 st.write("**Appears on these pages:**")
                                 
-                                # Clean out the "NaN" values
-                                valid_pages = [p for p in m['pages'] if pd.notna(p) and str(p).lower() != 'nan']
+                                # 1. Clean NaN and explicitly block pagination URLs (?page=, &page=)
+                                valid_pages = [
+                                    p for p in m['pages'] 
+                                    if pd.notna(p) 
+                                    and str(p).lower() != 'nan'
+                                    and 'page=' not in str(p).lower()
+                                ]
+                                
+                                # 2. Sort by length (shortest first) to bubble main articles to the top
+                                valid_pages.sort(key=lambda x: len(str(x)))
                                 
                                 if valid_pages:
+                                    # Show the top 5 cleanest links
                                     for p in valid_pages[:5]: 
                                         st.write(f"🔗 [{p}]({p})")
+                                    
+                                    # 3. Put the rest in a clickable dropdown instead of hiding them!
                                     if len(valid_pages) > 5:
-                                        st.write(f"*...and {len(valid_pages) - 5} more pages.*")
+                                        with st.expander(f"👀 See {len(valid_pages) - 5} more pages where this is used"):
+                                            for p in valid_pages[5:]:
+                                                st.write(f"🔗 [{p}]({p})")
+                                elif m['pages']: # If we filtered out all pages because they were all junk
+                                     st.write("📄 *Only found on paginated/hub pages.*")
                                 else:
                                     st.write("📄 *Source page not listed in this specific CSV format.*")
-                                    st.caption("💡 To see exact page links, ensure you are using 'Bulk Export > Images > All Images' from the top menu of Screaming Frog.")
                             st.divider()
                 else:
                     st.balloons()
