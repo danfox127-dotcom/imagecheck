@@ -8,7 +8,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- Configuration ---
-# UPDATE THIS LINE to match file #7 exactly!
+# UPDATE THIS LINE if you uploaded a new CSV file (like 'strep throat.csv')
 CSV_FILE = "images for columbiadocs.csv" 
 
 # --- Sidebar Debug ---
@@ -16,14 +16,8 @@ st.sidebar.subheader("System Debugger")
 visible_files = os.listdir(".")
 st.sidebar.write("Files in Repo:", visible_files)
 
-# --- Smart Filtering ---
-EXCLUSION_KEYWORDS = [
-    'logo', 'icon', 'facebook', 'twitter', 'instagram', 
-    'linkedin', 'youtube', 'bg', 'background', 'spacer', 
-    'button', 'sprite', 'social', 'footer', 'header'
-]
-
 def get_image_hash(image):
+    """Generates the perceptual hash for image comparison."""
     return imagehash.phash(image)
 
 def is_valid_content_image(url):
@@ -34,14 +28,13 @@ def is_valid_content_image(url):
     url_lower = url.lower()
     
     # 1. Clean the URL (Columbia adds query strings like ?itok=... to the end of images)
-    # We need to strip that off to check the real file extension
     clean_url = url_lower.split('?')[0]
     
     # 2. Strict Whitelist: If it's not one of these, instantly ignore it.
     if not clean_url.endswith(('.jpg', '.jpeg', '.png', '.webp')):
         return False 
         
-    # 3. Keyword Blacklist: Even if it is a PNG, skip it if it's named "footer-logo.png"
+    # 3. Keyword Blacklist: Skip logos and icons even if they are PNGs
     EXCLUSION_KEYWORDS = [
         'logo', 'icon', 'facebook', 'twitter', 'instagram', 
         'linkedin', 'youtube', 'bg', 'background', 'spacer', 
@@ -54,8 +47,8 @@ def is_valid_content_image(url):
     return True
 
 # --- Main App ---
-st.title("Turbo Image Matcher 🏎️")
-st.write("Directly comparing your photo against the Screaming Frog image database.")
+st.title("Site-Wide Image Usage Checker 🖼️")
+st.write("Upload a stock photo or b-roll image to see if it is already published somewhere on the website.")
 
 @st.cache_data
 def load_image_data():
@@ -70,32 +63,29 @@ def load_image_data():
 df = load_image_data()
 
 if df is not None:
-    # --- UPDATED COLUMN DETECTION ---
-    # Now looks for 'address' as the primary image URL column
-    img_col = next((c for c in df.columns if c.lower() in ['address', 'source', 'image url', 'src', 'url']), None)
-    
-    # Looks for a page column, but makes sure it doesn't accidentally grab 'address' twice
-    page_col = next((c for c in df.columns if c.lower() in ['destination', 'page url'] and c != img_col), None)
+    # Auto-detect Image and Page columns from Screaming Frog export
+    img_col = 'Destination' if 'Destination' in df.columns else next((c for c in df.columns if c.lower() in ['address', 'destination', 'image url', 'src', 'url']), None)
+    page_col = 'Source' if 'Source' in df.columns else next((c for c in df.columns if c.lower() in ['source', 'page url']), None)
 
     if not img_col:
-        st.error(f"❌ Could not find an image source column. Found: {list(df.columns)[:5]}...")
+        st.error(f"❌ Could not find an image column. Found: {list(df.columns)[:5]}...")
     else:
-        # Apply Smart Filter
-        all_unique_images = df[img_col].unique()
-        filtered_images = [url for url in all_unique_images if is_valid_image_url(url)]
+        # Apply the new Strict Filter
+        all_unique_images = df[img_col].dropna().unique()
+        filtered_images = [url for url in all_unique_images if is_valid_content_image(url)]
         
-        st.sidebar.success(f"✅ Loaded {len(all_unique_images)} total images.")
-        st.sidebar.info(f"🧹 Filtered down to {len(filtered_images)} likely photos.")
+        st.sidebar.success(f"✅ Loaded {len(all_unique_images)} total image links.")
+        st.sidebar.info(f"🧹 Filtered down to {len(filtered_images)} strict content photos.")
         
-        uploaded_image = st.file_uploader("Upload Target Photo", type=['jpg', 'jpeg', 'png'])
+        uploaded_image = st.file_uploader("Upload Image to Check", type=['jpg', 'jpeg', 'png', 'webp'])
         
         if uploaded_image:
             target_img = Image.open(uploaded_image).convert('RGB')
-            st.image(target_img, caption="Target Image", width=150)
+            st.image(target_img, caption="Checking this image against the database...", width=250)
             
-            tolerance = st.sidebar.slider("Match Sensitivity", 0, 25, 12, help="Lower = Stricter match")
+            tolerance = st.sidebar.slider("Match Sensitivity", 0, 25, 12, help="Lower = Stricter match. 12 is ideal for compressed web images.")
             
-            if st.button("🚀 Run Turbo Scan"):
+            if st.button("🚀 Search Website Database"):
                 target_hash = get_image_hash(target_img)
                 matches = []
                 
@@ -105,7 +95,7 @@ if df is not None:
                 def check_single_image(img_url):
                     try:
                         resp = requests.get(img_url, stream=True, timeout=5)
-                        if 'image' in resp.headers.get('Content-Type', ''):
+                        if 'image' in resp.headers.get('Content-Type', '') or img_url.lower().split('?')[0].endswith(('webp', 'jpg', 'png', 'jpeg')):
                             test_img = Image.open(io.BytesIO(resp.content)).convert('RGB')
                             diff = target_hash - get_image_hash(test_img)
                             if diff <= tolerance:
@@ -120,28 +110,28 @@ if df is not None:
                     for i, future in enumerate(as_completed(futures)):
                         img_url = futures[future]
                         if future.result():
-                            # If page_col exists, grab it. Otherwise, say "Check Screaming Frog".
-                            page_url = df[df[img_col] == img_url][page_col].values[0] if page_col else "See Screaming Frog 'Inlinks' for page source"
-                            matches.append({"img": img_url, "page": page_url})
+                            pages_found = df[df[img_col] == img_url][page_col].unique() if page_col else ["Unknown Page"]
+                            matches.append({"img": img_url, "pages": pages_found})
                         
                         progress_bar.progress((i + 1) / len(filtered_images))
                         status.text(f"Scanning image {i+1} of {len(filtered_images)}...")
 
                 # --- Results Display ---
                 if matches:
-                    st.balloons()
-                    st.success(f"Found {len(matches)} match(es)!")
+                    st.error(f"⚠️ Image is already in use! Found {len(matches)} matching image file(s).")
                     for m in matches:
                         with st.container():
                             col1, col2 = st.columns([1, 4])
                             with col1:
                                 st.image(m['img'], use_container_width=True)
                             with col2:
-                                st.write(f"**Image Source:** {m['img']}")
-                                if m['page'].startswith("http"):
-                                    st.write(f"🔗 [Found on Page]({m['page']})")
-                                else:
-                                    st.write(f"📄 *{m['page']}*")
+                                st.write(f"**Live Image Source:** {m['img']}")
+                                st.write("**Appears on these pages:**")
+                                for p in m['pages'][:5]: 
+                                    st.write(f"🔗 [{p}]({p})")
+                                if len(m['pages']) > 5:
+                                    st.write(f"*...and {len(m['pages']) - 5} more pages.*")
                             st.divider()
                 else:
-                    st.warning("No matches found. Try increasing the Match Sensitivity.")
+                    st.balloons()
+                    st.success("✅ Good to go! No matches found. This image appears to be new to the site.")
