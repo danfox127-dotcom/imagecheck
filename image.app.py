@@ -8,7 +8,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- Configuration ---
-# UPDATE THIS LINE if you uploaded a new CSV file (like 'strep throat.csv')
+# Make sure this matches your current file!
 CSV_FILE = "images for columbiadocs.csv" 
 
 # --- Sidebar Debug ---
@@ -17,7 +17,6 @@ visible_files = os.listdir(".")
 st.sidebar.write("Files in Repo:", visible_files)
 
 def get_image_hash(image):
-    """Generates the perceptual hash for image comparison."""
     return imagehash.phash(image)
 
 def is_valid_content_image(url):
@@ -26,15 +25,11 @@ def is_valid_content_image(url):
         return False
     
     url_lower = url.lower()
-    
-    # 1. Clean the URL (Columbia adds query strings like ?itok=... to the end of images)
     clean_url = url_lower.split('?')[0]
     
-    # 2. Strict Whitelist: If it's not one of these, instantly ignore it.
     if not clean_url.endswith(('.jpg', '.jpeg', '.png', '.webp')):
         return False 
         
-    # 3. Keyword Blacklist: Skip logos and icons even if they are PNGs
     EXCLUSION_KEYWORDS = [
         'logo', 'icon', 'facebook', 'twitter', 'instagram', 
         'linkedin', 'youtube', 'bg', 'background', 'spacer', 
@@ -63,14 +58,12 @@ def load_image_data():
 df = load_image_data()
 
 if df is not None:
-    # Auto-detect Image and Page columns from Screaming Frog export
     img_col = 'Destination' if 'Destination' in df.columns else next((c for c in df.columns if c.lower() in ['address', 'destination', 'image url', 'src', 'url']), None)
     page_col = 'Source' if 'Source' in df.columns else next((c for c in df.columns if c.lower() in ['source', 'page url']), None)
 
     if not img_col:
         st.error(f"❌ Could not find an image column. Found: {list(df.columns)[:5]}...")
     else:
-        # Apply the new Strict Filter
         all_unique_images = df[img_col].dropna().unique()
         filtered_images = [url for url in all_unique_images if is_valid_content_image(url)]
         
@@ -110,7 +103,8 @@ if df is not None:
                     for i, future in enumerate(as_completed(futures)):
                         img_url = futures[future]
                         if future.result():
-                            pages_found = df[df[img_col] == img_url][page_col].unique() if page_col else ["Unknown Page"]
+                            # Grab pages, but ensure we don't grab empty ones
+                            pages_found = df[df[img_col] == img_url][page_col].unique() if page_col else []
                             matches.append({"img": img_url, "pages": pages_found})
                         
                         progress_bar.progress((i + 1) / len(filtered_images))
@@ -127,10 +121,18 @@ if df is not None:
                             with col2:
                                 st.write(f"**Live Image Source:** {m['img']}")
                                 st.write("**Appears on these pages:**")
-                                for p in m['pages'][:5]: 
-                                    st.write(f"🔗 [{p}]({p})")
-                                if len(m['pages']) > 5:
-                                    st.write(f"*...and {len(m['pages']) - 5} more pages.*")
+                                
+                                # --- THE FIX: Clean out the "NaN" values ---
+                                valid_pages = [p for p in m['pages'] if pd.notna(p) and str(p).lower() != 'nan']
+                                
+                                if valid_pages:
+                                    for p in valid_pages[:5]: 
+                                        st.write(f"🔗 [{p}]({p})")
+                                    if len(valid_pages) > 5:
+                                        st.write(f"*...and {len(valid_pages) - 5} more pages.*")
+                                else:
+                                    st.write("📄 *Source page not listed in this specific CSV format.*")
+                                    st.caption("💡 To see exact page links, ensure you are using 'Bulk Export > Images > All Images' from the top menu of Screaming Frog.")
                             st.divider()
                 else:
                     st.balloons()
