@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- Configuration ---
 # Make sure this matches your current file!
-CSV_FILE = "images for columbiadocs.csv" 
+CSV_FILE = "all_images.csv.zip" 
 
 # --- Sidebar Debug ---
 st.sidebar.subheader("System Debugger")
@@ -45,10 +45,11 @@ def is_valid_content_image(url):
 st.title("Site-Wide Image Usage Checker 🖼️")
 st.write("Upload a stock photo or b-roll image to see if it is already published somewhere on the website.")
 
-@st.cache_data
+@@st.cache_data
 def load_image_data():
     try:
-        data = pd.read_csv(CSV_FILE)
+        # Tell pandas to unzip it automatically in the background!
+        data = pd.read_csv(CSV_FILE, compression='zip')
         data.columns = [c.strip() for c in data.columns]
         return data
     except Exception as e:
