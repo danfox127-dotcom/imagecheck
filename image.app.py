@@ -5,10 +5,11 @@ from PIL import Image
 import imagehash
 import io
 import os
+import zipfile  # <-- Added this to handle Mac zip files!
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- Configuration ---
-CSV_FILE = "all_images.csv.zip" # Ensure this matches your uploaded zip file name!
+CSV_FILE = "all_images.csv.zip" # Matches your uploaded zip
 
 # --- Sidebar Debug ---
 st.sidebar.subheader("System Debugger")
@@ -44,11 +45,19 @@ def is_valid_content_image(url):
 st.title("Site-Wide Image Usage Checker 🖼️")
 st.write("Upload a stock photo or b-roll image to see if it is already published somewhere on the website.")
 
-@st.cache_data  # <--- Fixed the double @@ right here!
+@st.cache_data
 def load_image_data():
     try:
-        # The compression='zip' tells it to magically unzip the file in the background
-        data = pd.read_csv(CSV_FILE, compression='zip')
+        # --- NEW MAC-PROOF ZIP EXTRACTOR ---
+        if CSV_FILE.endswith('.zip'):
+            with zipfile.ZipFile(CSV_FILE, 'r') as z:
+                # Find the real CSV file, actively ignoring Mac's hidden __MACOSX files
+                real_csv = [f for f in z.namelist() if not f.startswith('__MACOSX') and f.endswith('.csv')][0]
+                with z.open(real_csv) as f:
+                    data = pd.read_csv(f)
+        else:
+            data = pd.read_csv(CSV_FILE)
+            
         data.columns = [c.strip() for c in data.columns]
         return data
     except Exception as e:
