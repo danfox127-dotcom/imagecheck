@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- Configuration ---
 # UPDATE THIS LINE to match file #7 exactly!
-CSV_FILE = "columbiadoctors_images_used_3_6.csv" 
+CSV_FILE = "images for columbiadocs.csv" 
 
 # --- Sidebar Debug ---
 st.sidebar.subheader("System Debugger")
