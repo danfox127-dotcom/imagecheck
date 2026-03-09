@@ -8,8 +8,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- Configuration ---
-# Make sure this matches your current file!
-CSV_FILE = "all_images.csv.zip" 
+CSV_FILE = "all_images.csv.zip" # Ensure this matches your uploaded zip file name!
 
 # --- Sidebar Debug ---
 st.sidebar.subheader("System Debugger")
@@ -45,10 +44,10 @@ def is_valid_content_image(url):
 st.title("Site-Wide Image Usage Checker 🖼️")
 st.write("Upload a stock photo or b-roll image to see if it is already published somewhere on the website.")
 
-@@st.cache_data
+@st.cache_data  # <--- Fixed the double @@ right here!
 def load_image_data():
     try:
-        # Tell pandas to unzip it automatically in the background!
+        # The compression='zip' tells it to magically unzip the file in the background
         data = pd.read_csv(CSV_FILE, compression='zip')
         data.columns = [c.strip() for c in data.columns]
         return data
@@ -123,7 +122,7 @@ if df is not None:
                                 st.write(f"**Live Image Source:** {m['img']}")
                                 st.write("**Appears on these pages:**")
                                 
-                                # --- THE FIX: Clean out the "NaN" values ---
+                                # Clean out the "NaN" values
                                 valid_pages = [p for p in m['pages'] if pd.notna(p) and str(p).lower() != 'nan']
                                 
                                 if valid_pages:
