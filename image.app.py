@@ -9,7 +9,7 @@ import zipfile  # <-- Added this to handle Mac zip files!
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- Configuration ---
-CSV_FILE = "all_images.csv.zip" # Matches your uploaded zip
+CSV_FILE = "columbiadocs_all_image_inlinks.csv"
 
 # --- Sidebar Debug ---
 st.sidebar.subheader("System Debugger")
