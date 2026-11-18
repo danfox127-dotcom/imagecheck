@@ -129,6 +129,11 @@ their keypoints align; they are never silently reported as "not found". Frames f
 photo shoot (e.g. `chef_keily_busby-00127` vs `-00135`) come back as **review**, not as matches.
 Full reports: `data/index/eval_report.md`, `data/index/eval_report_holdout.md`.
 
+**Re-measured after the first site scan** (1,534-image index, 420 held-out queries): 99.3% recall,
+with 0 wrong "same photo" verdicts once a newly found on-site duplicate was recorded. The one miss
+is a known hard case: a tight, upscaled Drupal crop that's mostly blurry, repetitive texture
+(DNA-gel stripes), where keypoints can't align. A copy like that can come back "Not found".
+
 The benchmark also found **real duplicates already on the site**, for example
 `gettyimages-180777876.jpg` at three URLs (one renamed `03_04_day_highview.jpg`),
 `ortho_-_spine_hero.jpg` = `congenital-scoliosis.jpg`, and `childrens-health-immuno.jpg` =
