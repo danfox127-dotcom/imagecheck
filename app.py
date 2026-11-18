@@ -129,7 +129,7 @@ def main() -> None:
         with st.spinner("Searching..."):
             try:
                 result = searcher.search(data, uploaded.name)
-            except OSError as e:
+            except (OSError, ValueError) as e:
                 st.error(f"Couldn't read that image: {e}")
                 return
         cov = result.coverage

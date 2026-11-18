@@ -23,7 +23,13 @@ from PIL import Image, ImageOps
 
 from .config import EmbeddingConfig
 
-Image.MAX_IMAGE_PIXELS = 200_000_000  # big stock originals are fine
+# Hard cap on decoded size. Checked from the header before any pixels are
+# decoded, so a tiny file claiming huge dimensions (a "decompression bomb")
+# is rejected without allocating memory. Pillow's own default limit stays on.
+MAX_PIXELS = 100_000_000
+# We never use more than 1024px; JPEGs decode straight to the smallest DCT scale
+# that still covers this (draft() never goes below it).
+DECODE_TARGET = (1024, 1024)
 
 _MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 _STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
@@ -33,15 +39,33 @@ _PATCH = 14
 # ---------------------------------------------------------------- loading
 
 
+class ImageTooLarge(ValueError):
+    pass
+
+
 def load_image(data: bytes | io.IOBase) -> Image.Image:
-    """Decode to RGB, honoring EXIF orientation and flattening transparency onto white."""
-    im = Image.open(io.BytesIO(data) if isinstance(data, (bytes, bytearray)) else data)
+    """Decode to RGB, honoring EXIF orientation and flattening transparency onto white.
+
+    The original pixel size is kept in `img.info["original_size"]`, since large
+    JPEGs are decoded at reduced resolution.
+    """
+    try:
+        im = Image.open(io.BytesIO(data) if isinstance(data, (bytes, bytearray)) else data)
+    except Image.DecompressionBombError as e:
+        raise ImageTooLarge(str(e)) from e
+    w, h = im.size
+    if w * h > MAX_PIXELS:
+        raise ImageTooLarge(f"image is {w}x{h} pixels; the limit is {MAX_PIXELS // 1_000_000} megapixels")
+    if im.format == "JPEG":
+        im.draft("RGB", DECODE_TARGET)
     im = ImageOps.exif_transpose(im)
     if im.mode in ("RGBA", "LA", "P"):
         im = im.convert("RGBA")
         bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
         im = Image.alpha_composite(bg, im)
-    return im.convert("RGB")
+    out = im.convert("RGB")
+    out.info["original_size"] = (w, h)
+    return out
 
 
 def downscale(img: Image.Image, max_side: int) -> Image.Image:

@@ -207,7 +207,7 @@ def build_index(
                 fetched = fut.result()
                 img = features.load_image(fetched.data)
                 rec["sha256"] = features.sha256(fetched.data)
-                rec["width"], rec["height"] = img.size
+                rec["width"], rec["height"] = img.info.get("original_size", img.size)
                 small = features.downscale(img, CACHE_MAX_SIDE)
                 rec["phash"] = features.phash(small)
                 rec["source_url"] = fetched.source_url

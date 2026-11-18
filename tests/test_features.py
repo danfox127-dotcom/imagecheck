@@ -98,3 +98,30 @@ def test_agreement_rejects_other_frame_from_same_shoot():
     crop = features.center_crop_aspect(frame_a, 3.0)
     vc = features.verify(features.local_features(crop), features.local_features(frame_a))
     assert vc.agreement >= 0.9, vc
+
+
+def test_load_image_rejects_decompression_bombs_before_decoding():
+    import struct
+    import time
+    import zlib
+
+    import pytest
+
+    def chunk(kind, body):
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
+
+    # A ~100-byte PNG whose header claims 30000 x 30000 pixels (900 MP).
+    ihdr = struct.pack(">IIBBBBB", 30000, 30000, 8, 2, 0, 0, 0)
+    bomb = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(b"")) + chunk(b"IEND", b"")
+    t = time.perf_counter()
+    with pytest.raises(ValueError):
+        features.load_image(bomb)
+    assert time.perf_counter() - t < 1.0
+
+
+def test_load_image_decodes_large_jpegs_reduced_but_reports_original_size():
+    from PIL import Image
+    big = Image.new("RGB", (6000, 4000), (120, 30, 200))
+    out = features.load_image(to_jpeg(big))
+    assert out.info["original_size"] == (6000, 4000)
+    assert max(out.size) <= 4096 and max(out.size) >= 1024
