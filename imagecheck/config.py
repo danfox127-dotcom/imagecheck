@@ -11,6 +11,7 @@ DATA_DIR = REPO_ROOT / "data"
 DEFAULT_INDEX_DIR = DATA_DIR / "index"
 DEFAULT_CACHE_DIR = DATA_DIR / "cache"
 DEFAULT_CRAWL_DIR = DATA_DIR / "crawls"
+DEFAULT_SCAN_DIR = DATA_DIR / "scans"
 
 USER_AGENT = "imagecheck/2.0 (duplicate image checker)"
 
@@ -29,8 +30,10 @@ class Scope:
         "/staticmaps/",  # generated Google map tiles
         "/themes/",  # theme chrome: map markers, icons
     )
-    # If an image ONLY ever appears in these Screaming Frog "Link Position"s, skip it.
-    chrome_positions: tuple[str, ...] = ("Header", "Footer")
+    # If an image ONLY ever appears in these page locations, it's site chrome
+    # (logos etc.) and is skipped. Mega-menu photos sit in <nav> inside the
+    # header and ARE kept: they're real photos shown on every page.
+    chrome_positions: tuple[str, ...] = ("header", "footer")
 
 
 @dataclass

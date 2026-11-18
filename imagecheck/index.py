@@ -8,7 +8,9 @@ Layout of an index directory:
 from __future__ import annotations
 
 import json
+import os
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -23,6 +25,10 @@ from .fetch import FetchError, ImageCache, fetch_image, make_session
 from .ingest import SiteImage, clean_pages
 
 CACHE_MAX_SIDE = 1024
+
+
+class BuildCancelled(Exception):
+    """Raised when a build is stopped before it could save a consistent index."""
 SCHEMA_VERSION = 1
 
 
@@ -40,20 +46,33 @@ class Index:
         return cls([], np.zeros((0, dim), np.float32), np.zeros(0, np.int32), {})
 
     @classmethod
-    def load(cls, index_dir: Path) -> "Index":
+    def load(cls, index_dir: Path, attempts: int = 10) -> "Index":
+        """Load both files, retrying if a rebuild swapped them in between reads."""
         index_dir = Path(index_dir)
-        doc = json.loads((index_dir / "images.json").read_text())
-        arrs = np.load(index_dir / "embeddings.npz")
-        return cls(doc["images"], arrs["emb"].astype(np.float32), arrs["owner"].astype(np.int32), doc.get("meta", {}))
+        for attempt in range(attempts):
+            doc = json.loads((index_dir / "images.json").read_text())
+            with np.load(index_dir / "embeddings.npz") as arrs:
+                build_id = str(arrs["build_id"]) if "build_id" in arrs.files else None
+                emb, owner = arrs["emb"].astype(np.float32), arrs["owner"].astype(np.int32)
+            meta = doc.get("meta", {})
+            if build_id == meta.get("build_id") or attempt == attempts - 1:
+                if build_id != meta.get("build_id"):
+                    raise RuntimeError(f"index files in {index_dir} are from different builds")
+                return cls(doc["images"], emb, owner, meta)
+            time.sleep(0.2)
+        raise AssertionError("unreachable")
 
     def save(self, index_dir: Path) -> None:
+        """Atomic per file; both carry the same build_id so readers can detect a mix."""
         index_dir = Path(index_dir)
         index_dir.mkdir(parents=True, exist_ok=True)
+        self.meta["build_id"] = uuid.uuid4().hex
+        np.savez_compressed(index_dir / "embeddings.tmp.npz", emb=self.emb.astype(np.float32),
+                            owner=self.owner, build_id=np.array(self.meta["build_id"]))
         tmp = index_dir / "images.json.tmp"
         tmp.write_text(json.dumps({"meta": self.meta, "images": self.images}, indent=1))
-        np.savez_compressed(index_dir / "embeddings.tmp.npz", emb=self.emb.astype(np.float32), owner=self.owner)
-        tmp.replace(index_dir / "images.json")
-        (index_dir / "embeddings.tmp.npz").replace(index_dir / "embeddings.npz")
+        os.replace(index_dir / "embeddings.tmp.npz", index_dir / "embeddings.npz")
+        os.replace(tmp, index_dir / "images.json")
 
     # ------------------------------------------------------------ queries
 
@@ -95,7 +114,10 @@ def build_index(
     workers: int = 8,
     retry_failed: bool = True,
     crawl_files: list[str] | None = None,
+    source: dict | None = None,
     log: Callable[[str], None] = print,
+    progress: Callable[[str, int, int], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
     checkpoint_every: int = 200,
 ) -> Index:
     """(Re)build the index for `inventory`, reusing prior work where possible.
@@ -162,7 +184,12 @@ def build_index(
         "crop_aspects": list(cfg.crop_aspects),
         "crawl_files": crawl_files or [],
         "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "source": source or {},
+        "last_build": {"reused": len(images), "reembedded": len(from_cache), "fetched": len(todo)},
     }
+    progress = progress or (lambda phase, done, total: None)
+    should_stop = should_stop or (lambda: False)
+    stopped = False
 
     def snapshot() -> Index:
         dim = embedder.dim
@@ -190,19 +217,30 @@ def build_index(
         pending_imgs.clear()
 
     for k, rec in enumerate(from_cache, 1):
+        if should_stop():
+            # Saving now would drop every image not yet re-embedded; keep the old index.
+            raise BuildCancelled("stopped while re-embedding; the previous index was left unchanged")
         pending_imgs.append((rec, cache.get(rec["url"])))
         if len(pending_imgs) >= 16:
             flush()
         if k % 200 == 0 or k == len(from_cache):
             log(f"  {k}/{len(from_cache)} re-embedded")
+        progress("re-embedding", k, len(from_cache))
     flush()
 
+    finished: set[int] = set()
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(fetch_image, rec["url"], rec["variants"], session): rec for rec in todo
         }
         for fut in as_completed(futures):
+            if should_stop():
+                stopped = True
+                for f in futures:
+                    f.cancel()
+                break
             rec = futures[fut]
+            finished.add(id(rec))
             try:
                 fetched = fut.result()
                 img = features.load_image(fetched.data)
@@ -225,10 +263,19 @@ def build_index(
             if done % 50 == 0 or done == len(todo):
                 rate = done / max(time.time() - t0, 1e-6)
                 log(f"  {done}/{len(todo)} fetched ({rate:.1f}/s)")
+            progress("downloading", done, len(todo))
             if checkpoint_every and done % checkpoint_every == 0:
                 flush()
                 snapshot().save(index_dir)
     flush()
+    if stopped:
+        # Images we never got to stay listed (as not indexed) so search coverage is honest.
+        for rec in todo:
+            if id(rec) not in finished:
+                rec["status"] = "skipped"
+                rec["error"] = "the scan was cancelled before this image was downloaded"
+                add(rec, np.zeros((0, embedder.dim), np.float32))
+        meta["cancelled"] = True
 
     # Keep a stable order (by URL) so diffs/inspection are easy.
     idx = snapshot()

@@ -14,3 +14,6 @@ data/index/eval_raw.json
 # Committing them would add ~17 MB to history on every rebuild.
 data/index/embeddings.npz
 data/index/images.json
+
+# Site scans: page store, per-run logs, status/lock files (rebuilt by scanning)
+data/scans/

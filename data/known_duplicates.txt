@@ -11,3 +11,4 @@ https://www.columbiadoctors.org/childrens-health/sites/default/files/media/image
 # Composite graphics that reuse the same phone-screenshot panel (partial reuse, not a full duplicate):
 https://www.columbiadoctors.org/sites/default/files/media/images/2022-04/ecg_connect_app_instruction_image_rescale_03.jpg https://www.columbiadoctors.org/sites/default/files/media/images/2022-04/ecg_connect_app_instruction_image_rescale_01.jpg
 https://www.columbiadoctors.org/sites/default/files/media/images/2022-04/ecg_connect_app_instruction_image_rescale_03.jpg https://www.columbiadoctors.org/sites/default/files/media/images/2022-04/ecg_connect_app_instruction_image_rescale_04.jpg
+https://www.columbiadoctors.org/sites/default/files/media/images/2021-08/adult_dermatology-1.jpg https://www.columbiadoctors.org/sites/default/files/media/images/2021-06/880_dermatology_featured_imeage.jpg

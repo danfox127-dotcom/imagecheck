@@ -8,9 +8,11 @@ Everything is open source and runs on a laptop. No paid APIs.
 
 ## How it works
 
-1. **Index (offline, once per crawl).** `scripts/build_index.py` reads Screaming Frog crawl exports.
-   It collapses every Drupal crop and size variant (`/styles/cola_media_320_16_9/...`) back to the
-   one original file, downloads each original once, and stores a few fingerprints for it.
+1. **Scan (in the app, or on a schedule).** The built-in scanner crawls the site with
+   [Columbia-Crawler](https://github.com/danfox127-dotcom/Columbia-Crawler), finds every image on
+   every page, including lazy-loaded ones, and records which page shows which image. It collapses
+   every Drupal crop and size variant (`/styles/cola_media_320_16_9/...`) back to the one original
+   file, downloads each new original once, and stores a few fingerprints for it.
 2. **Search (a few seconds).** For an uploaded image it checks, in order:
    | Layer | Catches | Certainty |
    |---|---|---|
@@ -18,7 +20,7 @@ Everything is open source and runs on a laptop. No paid APIs.
    | SHA-256 of the file | byte-identical file | certain |
    | pHash | same image resized or recompressed | very high |
    | DINOv2 embedding ([`facebook/dinov2-small`](https://huggingface.co/facebook/dinov2-small), Apache-2.0) | builds the shortlist; robust to crops and edits | candidate only |
-   | SIFT keypoints + RANSAC | confirms a shortlisted image is *literally the same photograph* | very high |
+   | SIFT keypoints + RANSAC, then a patch-by-patch pixel comparison | confirms a shortlisted image is *literally the same photograph*, not another frame of the same shoot | very high |
 3. **Verdicts:**
    - **Already on the site:** confirmed by one of the certain or very-high layers.
    - **Similar images, review:** looks alike but isn't confirmed. Often a different frame from
@@ -33,28 +35,85 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 ```
 
-The first run downloads the DINOv2 model (~90 MB) from Hugging Face.
-
-## Refresh the index after a new crawl
-
-1. In Screaming Frog: **Bulk Export → Links → All Image Inlinks**. Save it into `data/crawls/`.
-   Older or extra exports can stay; everything in the folder is merged.
-2. Run:
-   ```bash
-   python scripts/build_index.py
-   ```
-   Only new images are downloaded. Images no longer in the crawl drop out. Failures are printed and
-   listed in the app's sidebar. Use `--refresh` to rebuild from scratch.
-
-What gets indexed is set in `imagecheck/config.py` (`Scope`): images on `www.columbiadoctors.org`,
-excluding generated map tiles and theme icons. Healthwise health-library art and YouTube or Vimeo
-thumbnails are third-party content and are skipped. Use `--host` to change this.
+The first run downloads the DINOv2 model (~90 MB) from Hugging Face. The crawler comes from
+GitHub through `requirements.txt`. To work on both repos at once, use
+`pip install -e ../Columbia-Crawler` instead.
 
 ## Run the app
 
 ```bash
 streamlit run app.py
 ```
+
+It has two pages:
+- **Check an image**: upload a photo and get "Already on the site", "Similar images, review", or
+  "Not found".
+- **Site scan**: crawl the site to update the index.
+
+The sidebar on both pages shows how fresh the data is. It turns into a warning once the last full
+scan is more than 30 days old.
+
+## Keep the index current: scanning the site
+
+On the **Site scan** page:
+- **Whole site** takes about 3,200 pages at 4 pages/s, roughly **13 minutes**. The scan runs in the
+  background, so you can close the tab. It finds new images and drops ones no longer on any page.
+- **Only these folders**, e.g. `news, childrens-health`, takes a few minutes. It's the quick way to
+  pick up newly published articles.
+- **Skip these folders** defaults to `health-library/*`. The Healthwise health library is ~6,700
+  pages, 70% of the site, and its images are licensed third-party art that isn't indexed. The `/*`
+  means "skip what's under the folder but still check the folder's own page"; the library's landing
+  page shows 5 site-owned images. Pages in skipped folders keep the images earlier scans found.
+- **Pace:** 0.25 s between requests (4/s). It was load-tested on this site (Fastly CDN, not
+  Cloudflare): no throttling, no blocking, flat response times. The crawler also slows itself down
+  automatically if it ever gets 429/503 responses. You can change this under *Advanced settings*.
+- **Cancel** keeps the pages fetched so far. Then either **Update index** (under *More options*) or
+  run another scan.
+
+A scan follows links from the home page. It also starts from every page earlier scans or imports
+found, and from the site's sitemaps, because pages nothing links to are otherwise invisible. The
+2021–22 annual report is one example. A known page only drops out once it stops loading, for
+example with a 404.
+
+The page shows an estimated time, based on the pages earlier scans found. Re-scans take about as
+long as the first one: the crawler asks whether each page changed since last time, but this site's
+CDN only sometimes answers "304 Not Modified".
+
+The same is available from the command line, for example from cron or a scheduled CI job:
+
+```bash
+python scripts/scan_site.py                   # whole site (minus health-library/*)
+python scripts/scan_site.py --include news    # one section
+python scripts/scan_site.py --no-skip         # really everything (~2.5x longer)
+python scripts/scan_site.py --reindex         # rebuild the index from saved pages only
+```
+
+Safety rules:
+- A scan that's capped, cancelled, or limited to sections never removes images it didn't re-check.
+- A "complete" scan that reaches fewer than half the known pages is treated as suspect, for
+  example when it's blocked or the site is down, and doesn't remove anything.
+- Only one scan runs at a time, whether started from the app or the CLI. Ctrl-C in the CLI, or
+  **Cancel** in the app, stops a scan wherever it was started.
+- Scans only start on the configured site (`Scope.hosts`, https) and stop if a redirect points
+  elsewhere.
+
+Crawling rules: robots.txt `Disallow` is obeyed. Its `Crawl-delay: 10` is not, by default, which
+matches Screaming Frog's behavior; there's a toggle in the app's *Advanced settings* and
+`--honor-crawl-delay` on the CLI.
+
+What gets indexed is set in `imagecheck/config.py` (`Scope`): images on `www.columbiadoctors.org`,
+excluding generated map tiles and theme icons. Healthwise health-library art and YouTube or Vimeo
+thumbnails are third-party content and are skipped. Logos in the page header or footer are skipped.
+Mega-menu photos are kept.
+
+### Screaming Frog exports (optional)
+
+Screaming Frog is no longer needed, but exports can still be imported: **Bulk Export → Links →
+All Image Inlinks**. Use *More options → Import* in the app, or put the files in `data/crawls/` and
+run `python scripts/build_index.py`.
+- Into an empty store, the export becomes the whole picture.
+- Otherwise it only fills in pages the scans haven't seen.
+- The crawl date is read from the export, so it never makes the data look fresher than it is.
 
 ## Accuracy (measured 2026-11-18, 1,376-image index)
 
@@ -106,20 +165,30 @@ pytest
 ## Layout
 
 ```
-app.py                  Streamlit UI
-imagecheck/ingest.py    crawl CSVs -> canonical originals + pages that use them
+app.py                  Streamlit entry point: navigation + freshness sidebar
+app_pages/check.py      "Check an image" page
+app_pages/scan.py       "Site scan" page
+imagecheck/scan.py      scan job: crawl -> page store -> index; status, lock, cancel
+imagecheck/pages.py     page store (which page shows which image) and its merge rules
+imagecheck/ingest.py    page records / Screaming Frog exports -> canonical originals + pages
 imagecheck/fetch.py     downloads with retries, on-disk cache
-imagecheck/features.py  hashes, DINOv2 embeddings, SIFT verification
+imagecheck/features.py  hashes, DINOv2 embeddings, SIFT + pixel verification
 imagecheck/index.py     build/load the index (data/index/)
 imagecheck/search.py    layered search + verdicts
-scripts/                build_index.py, evaluate.py
-data/crawls/            Screaming Frog exports
-data/index/             built index (small; commit it to host the app without rebuilding)
+imagecheck/webapp.py    shared Streamlit state (cached model, index, scan job)
+scripts/                scan_site.py, build_index.py (imports), evaluate.py
+data/crawls/            Screaming Frog exports (optional)
+data/scans/             page store, scan runs and status (git-ignored)
+data/index/             built index; embeddings and images.json are git-ignored
 data/cache/             downloaded site images (git-ignored)
 ```
 
 ## Hosting later
 
-`data/index/` is a few MB, so commit it and deploy `app.py` to Hugging Face Spaces or Streamlit
-Community Cloud (both free; use the CPU build of torch). With no `data/cache/` on the host, the
-app downloads the ~15 shortlisted site images live for each search.
+The built index (`data/index/`, about 17 MB) and page store (`data/scans/`) are git-ignored, so
+they're rebuilt locally rather than committed.
+- **Hosting on a free service** (Hugging Face Spaces, Streamlit Community Cloud; use the CPU
+  build of torch): run a scheduled `scripts/scan_site.py` somewhere persistent and publish its
+  `data/index/`. Hour-long scans don't survive well on hosts that sleep.
+- **On the host,** the app downloads the ~15 shortlisted site images live for each search if
+  `data/cache/` is missing.

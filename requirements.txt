@@ -1,4 +1,4 @@
-streamlit>=1.40
+streamlit>=1.45
 requests
 Pillow
 ImageHash
@@ -9,3 +9,6 @@ pandas
 torch
 transformers>=4.40
 opencv-python-headless
+# Crawl engine (Columbia-Crawler). Pinned to the PR branch commit until it merges;
+# for local development against a checkout: pip install -e ../Columbia-Crawler
+columbia-crawler @ git+https://github.com/danfox127-dotcom/Columbia-Crawler@3e6c64fa37d5f95079a1f97d3a7f459ef15a765e
