@@ -1,6 +1,7 @@
 """Check an image: is it already published on the website?"""
 
 import hashlib
+from urllib.parse import quote
 
 import streamlit as st
 
@@ -19,17 +20,26 @@ REASON_LABELS = {
 }
 
 
+def link(url: str, text: str | None = None) -> str:
+    """A Markdown link that can't be broken out of by characters in the URL or text."""
+    href = quote(url, safe=":/?&=%#+,;@~-._")
+    label = (text or url).replace("\\", "\\\\")
+    for ch in "[]()*_`<>":
+        label = label.replace(ch, "\\" + ch)
+    return f"[{label}]({href})"
+
+
 def show_pages(pages: list[str]) -> None:
     if not pages:
         st.caption("No page list for this image in the crawl data.")
         return
     st.markdown(f"**Used on {len(pages)} page{'s' if len(pages) != 1 else ''}:**")
     for p in pages[:5]:
-        st.markdown(f"- [{p}]({p})")
+        st.markdown(f"- {link(p)}")
     if len(pages) > 5:
         with st.expander(f"See {len(pages) - 5} more pages"):
             for p in pages[5:]:
-                st.markdown(f"- [{p}]({p})")
+                st.markdown(f"- {link(p)}")
 
 
 def show_match(searcher: Searcher, c) -> None:
@@ -49,7 +59,7 @@ def show_match(searcher: Searcher, c) -> None:
         else:
             st.markdown(f"**Looks similar ({c.similarity:.0%}), but not confirmed as the same photo.** "
                         "This could be another shot from the same photo shoot. Check it yourself.")
-        st.markdown(f"Original file: [{name}]({rec['url']})")
+        st.markdown(f"Original file: {link(rec['url'], name)}")
         if rec.get("alt_texts"):
             st.caption("Alt text: " + " | ".join(rec["alt_texts"][:3]))
         show_pages(rec.get("pages", []))

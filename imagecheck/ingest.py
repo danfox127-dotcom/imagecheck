@@ -73,6 +73,12 @@ def _crawl_csv_members(path: Path) -> list[str]:
         ]
 
 
+# Limits for zipped exports (they can be uploaded in the app): a real "All Image
+# Inlinks" export of the whole site is ~27 MB and compresses ~10:1.
+MAX_CSV_BYTES = 500_000_000
+MAX_ZIP_RATIO = 200
+
+
 def read_crawl(path: str | Path) -> pd.DataFrame:
     """Read a Screaming Frog CSV export, optionally inside a .zip (Mac-safe)."""
     path = Path(path)
@@ -80,8 +86,17 @@ def read_crawl(path: str | Path) -> pd.DataFrame:
         names = _crawl_csv_members(path)
         if not names:
             raise ValueError(f"No CSV found inside {path}")
-        with zipfile.ZipFile(path) as z, z.open(names[0]) as f:
-            df = pd.read_csv(io.BytesIO(f.read()), encoding="utf-8-sig", dtype=str, keep_default_na=False)
+        with zipfile.ZipFile(path) as z:
+            info = z.getinfo(names[0])
+            # Check the declared sizes before decompressing anything (zip bombs).
+            if info.file_size > MAX_CSV_BYTES or info.file_size > MAX_ZIP_RATIO * max(info.compress_size, 1):
+                raise ValueError(f"{path.name}: {names[0]} is too large or too compressed to import safely")
+            with z.open(info) as f:
+                # Read at most the limit, in case the declared size lies.
+                data = f.read(MAX_CSV_BYTES + 1)
+            if len(data) > MAX_CSV_BYTES:
+                raise ValueError(f"{path.name}: {names[0]} is larger than declared; not importing it")
+            df = pd.read_csv(io.BytesIO(data), encoding="utf-8-sig", dtype=str, keep_default_na=False)
     else:
         df = pd.read_csv(path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
     df.columns = [c.strip() for c in df.columns]
@@ -126,6 +141,12 @@ _SF_POSITIONS = {"header": "header", "footer": "footer", "navigation": "nav", "c
                  "sidebar": "aside", "aside": "aside"}
 
 
+def site_page_url(url: str, scope: Scope) -> bool:
+    """An http(s) URL on one of the site's hosts (pages shown as links in the app)."""
+    parts = urlsplit((url or "").strip())
+    return parts.scheme in ("http", "https") and (parts.hostname or "").lower().rstrip(".") in scope.hosts
+
+
 def page_url_for_inventory(page: dict, scope: Scope) -> str | None:
     """The URL a page's images should be credited to, or None if they don't count.
 
@@ -142,9 +163,9 @@ def page_url_for_inventory(page: dict, scope: Scope) -> str | None:
     url = page.get("url", "")
     if page.get("is_redirect"):
         url = (page.get("redirect_chain") or [url])[-1]
-        if (urlsplit(url).hostname or "").lower() not in scope.hosts:
-            return None
-    return url
+    # Only pages on the site count (redirects that left it, or junk from an
+    # imported file, e.g. "javascript:" URLs that would be shown as links).
+    return url if site_page_url(url, scope) else None
 
 
 def page_is_usable(page: dict, scope: Scope | None = None) -> bool:

@@ -175,7 +175,7 @@ with st.expander("More options", icon=":material/more_horiz:"):
     st.caption("Bulk Export → Links → All Image Inlinks (CSV, or a ZIP of it). Pages already known from "
                "scans are kept; the export only fills in pages they lack.")
     uploads = st.file_uploader("Export files", type=["csv", "zip"], accept_multiple_files=True, key="sf_upload",
-                               disabled=busy)
+                               disabled=busy, max_upload_size=100)
     if uploads and st.button("Import", icon=":material/upload_file:", key="import", disabled=busy):
         DEFAULT_CRAWL_DIR.mkdir(parents=True, exist_ok=True)
         stamp = time.strftime("%Y%m%d-%H%M%S")

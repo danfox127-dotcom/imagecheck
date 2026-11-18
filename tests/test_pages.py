@@ -127,3 +127,30 @@ def test_redirected_pages_count_under_their_final_url():
     [item] = inv.values()
     assert item.url.endswith("/wellness.WEBP")
     assert item.pages == {"https://www.columbiadoctors.org/health-library/"}
+
+
+def test_imported_pages_must_be_on_the_site():
+    pages = [
+        _page("javascript:alert(1)", {"src": f"{F}/media/images/a.jpg", "alt": ""}),
+        _page("https://evil.example/x", {"src": f"{F}/media/images/b.jpg", "alt": ""}),
+        _page("https://www.columbiadoctors.org/ok", {"src": f"{F}/media/images/c.jpg", "alt": ""}),
+    ]
+    inv = inventory_from_pages(pages, Scope())
+    assert set(inv) == {f"{F}/media/images/c.jpg"}
+
+
+def test_zip_bombs_are_refused(tmp_path, monkeypatch):
+    import zipfile
+
+    import pytest
+
+    from imagecheck import ingest
+    z = tmp_path / "bomb.zip"
+    with zipfile.ZipFile(z, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("x.csv", '"Address"\n' + "a" * 2_000_000)  # compresses ~1000:1
+    with pytest.raises(ValueError, match="too large or too compressed"):
+        ingest.read_crawl(z)
+    monkeypatch.setattr(ingest, "MAX_ZIP_RATIO", 10_000)
+    monkeypatch.setattr(ingest, "MAX_CSV_BYTES", 1000)
+    with pytest.raises(ValueError, match="too large"):
+        ingest.read_crawl(z)
