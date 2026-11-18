@@ -1,0 +1,9 @@
+{
+  "phash_exact": 4,
+  "top_k": 15,
+  "min_inliers": 15,
+  "min_coverage": 0.1,
+  "min_agreement": 0.75,
+  "review_similarity": 0.8,
+  "max_review": 5
+}

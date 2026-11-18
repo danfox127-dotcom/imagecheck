@@ -1,0 +1,13 @@
+# Site images confirmed by eye to be the same photograph under two different URLs.
+# One pair per line: <url> <url>. Used by scripts/evaluate.py so real duplicates
+# aren't counted as false matches.
+https://www.columbiadoctors.org/childrens-health/sites/default/files/media/images/2022-06/gettyimages-180777876.jpg https://www.columbiadoctors.org/sites/default/files/media/images/03_04_day_highview.jpg
+https://www.columbiadoctors.org/childrens-health/sites/default/files/media/images/2022-02/ophthamology.jpg https://www.columbiadoctors.org/sites/default/files/media/images/2022-06/ophthamology.jpeg
+https://www.columbiadoctors.org/childrens-health/sites/default/files/media/images/2021-04/childrens-health-immuno.jpg https://www.columbiadoctors.org/childrens-health/sites/default/files/media/images/teaser/2023-09/eoe.jpeg
+https://www.columbiadoctors.org/sites/default/files/media/images/2022-06/gettyimages-180777876.jpg https://www.columbiadoctors.org/sites/default/files/media/images/03_04_day_highview.jpg
+https://www.columbiadoctors.org/sites/default/files/media/images/2022-06/gettyimages-180777876.jpg https://www.columbiadoctors.org/childrens-health/sites/default/files/media/images/2022-06/gettyimages-180777876.jpg
+https://www.columbiadoctors.org/sites/default/files/media/images/teaser/2025-09/nj.jpg https://www.columbiadoctors.org/childrens-health/sites/default/files/media/images/2025-09/nj.jpg
+https://www.columbiadoctors.org/childrens-health/sites/default/files/media/images/2025-11/ortho_-_spine_hero.jpg https://www.columbiadoctors.org/childrens-health/sites/default/files/media/general/2025-12/congenital-scoliosis.jpg
+# Composite graphics that reuse the same phone-screenshot panel (partial reuse, not a full duplicate):
+https://www.columbiadoctors.org/sites/default/files/media/images/2022-04/ecg_connect_app_instruction_image_rescale_03.jpg https://www.columbiadoctors.org/sites/default/files/media/images/2022-04/ecg_connect_app_instruction_image_rescale_01.jpg
+https://www.columbiadoctors.org/sites/default/files/media/images/2022-04/ecg_connect_app_instruction_image_rescale_03.jpg https://www.columbiadoctors.org/sites/default/files/media/images/2022-04/ecg_connect_app_instruction_image_rescale_04.jpg

@@ -1,0 +1,16 @@
+# Local environment
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Downloaded site images (rebuilt by scripts/build_index.py)
+data/cache/
+
+# Evaluation output
+data/index/eval_raw.json
+
+# Built index artifacts: rebuilt by scripts/build_index.py (and soon the scanner).
+# Committing them would add ~17 MB to history on every rebuild.
+data/index/embeddings.npz
+data/index/images.json
