@@ -8,7 +8,7 @@ Everything is open source and runs on a laptop. No paid APIs.
 
 ## Install (for the team)
 
-Needs a Mac with Apple silicon (M1 or later) or Linux, and about 2 GB of disk space. No admin
+Needs a Mac with Apple silicon (M1 or later) or Linux, and up to 3 GB of disk space. No admin
 rights needed.
 
 1. Open **Terminal** (press ⌘-Space, type *Terminal*, press Return).
@@ -18,7 +18,7 @@ rights needed.
    curl -LsSf https://raw.githubusercontent.com/danfox127-dotcom/imagecheck/main/install.sh | sh
    ```
 
-   The first time takes about 5 minutes: it sets up Python, downloads the app and the latest site
+   The first time takes a few minutes: it sets up Python, downloads the app and the latest site
    data, then opens the app in your browser.
 3. From then on, double-click **Image checker** on your Desktop. A Terminal window opens alongside
    the app; keep it open while you use it, and close it when you're done.

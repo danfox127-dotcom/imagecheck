@@ -55,6 +55,13 @@ fi
 # Precompiling makes the first launch quick instead of a minute-long blank page.
 "$UV" pip install --quiet --compile-bytecode --python .venv/bin/python -r requirements.txt
 
+# Load every library once and download the image model (~90 MB) now, while waiting is expected:
+# macOS checks each newly installed library the first time it loads, which otherwise makes the
+# first launch sit on a blank page for a minute or more.
+say "Preparing the image model (one time, about a minute)"
+.venv/bin/python -c "import pandas, pyarrow, streamlit; from imagecheck import scan, search; from imagecheck.features import Embedder; Embedder()" >/dev/null 2>&1 \
+    || echo "(Couldn't finish this now; it will happen the first time you check an image.)"
+
 # 4. Site data, if the published copy is newer than what's here.
 say "Getting the latest site data"
 .venv/bin/python scripts/get_data.py || true
