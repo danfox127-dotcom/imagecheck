@@ -6,6 +6,34 @@ put on top.
 
 Everything is open source and runs on a laptop. No paid APIs.
 
+## Install (for the team)
+
+Needs a Mac with Apple silicon (M1 or later) or Linux, and about 2 GB of disk space. No admin
+rights needed.
+
+1. Open **Terminal** (press ⌘-Space, type *Terminal*, press Return).
+2. Paste this line and press Return:
+
+   ```bash
+   curl -LsSf https://raw.githubusercontent.com/danfox127-dotcom/imagecheck/main/install.sh | sh
+   ```
+
+   The first time takes about 5 minutes: it sets up Python, downloads the app and the latest site
+   data, then opens the app in your browser.
+3. From then on, double-click **Image checker** on your Desktop. A Terminal window opens alongside
+   the app; keep it open while you use it, and close it when you're done.
+
+**To update** the app and the site data, run the same line again. Your own scans are kept.
+
+What gets installed: the app and its Python libraries in `~/imagecheck` (mostly PyTorch, which runs
+the image model), and the shared site data: an index of the site's images and the list of pages
+they appear on. No copies of the photos are included; the app downloads site images from
+columbiadoctors.org as it needs them. To uninstall, delete `~/imagecheck` and the Desktop launcher.
+
+**Publishing fresh site data (maintainers):** after a full scan, run
+`python scripts/publish_data.py`. It attaches the index to a GitHub release (`data-YYYY-MM-DD`);
+everyone's next install or update picks it up.
+
 ## How it works
 
 1. **Scan (in the app, or on a schedule).** The built-in scanner crawls the site with
@@ -28,7 +56,7 @@ Everything is open source and runs on a laptop. No paid APIs.
    - **Not found:** no match. If some site images couldn't be downloaded when the index was
      built, the app says so. It never reports "not found" without telling you it skipped images.
 
-## Setup
+## Development setup
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
