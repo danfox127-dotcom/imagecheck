@@ -15,8 +15,8 @@ for port in range(8501, 8600):
 ')"
 URL="http://localhost:$PORT"
 
-# Open the browser once the app answers.
-(
+# Open the browser once the app answers (IMAGECHECK_NO_BROWSER=1 to skip, e.g. for testing).
+[ -n "${IMAGECHECK_NO_BROWSER:-}" ] || (
     i=0
     while [ $i -lt 120 ]; do
         if curl -fs "$URL/_stcore/health" >/dev/null 2>&1; then
