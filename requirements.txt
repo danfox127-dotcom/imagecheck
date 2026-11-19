@@ -1,5 +1,14 @@
-streamlit
+streamlit>=1.45
 requests
-beautifulsoup4
 Pillow
 ImageHash
+numpy
+pandas
+# CPU build of PyTorch is enough; on Linux hosts use
+#   --extra-index-url https://download.pytorch.org/whl/cpu
+torch
+transformers>=4.40
+opencv-python-headless
+# Crawl engine (Columbia-Crawler), pinned to a commit on main so upgrades are deliberate;
+# for local development against a checkout: pip install -e ../Columbia-Crawler
+columbia-crawler @ git+https://github.com/danfox127-dotcom/Columbia-Crawler@14c48151ce2c0501e893abbc029544754df66b00
