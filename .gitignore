@@ -17,3 +17,6 @@ data/index/images.json
 
 # Site scans: page store, per-run logs, status/lock files (rebuilt by scanning)
 data/scans/
+
+# Data bundle built by scripts/publish_data.py
+dist/
