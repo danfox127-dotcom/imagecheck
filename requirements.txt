@@ -9,6 +9,6 @@ pandas
 torch
 transformers>=4.40
 opencv-python-headless
-# Crawl engine (Columbia-Crawler). Pinned to the PR branch commit until it merges;
+# Crawl engine (Columbia-Crawler), pinned to a commit on main so upgrades are deliberate;
 # for local development against a checkout: pip install -e ../Columbia-Crawler
-columbia-crawler @ git+https://github.com/danfox127-dotcom/Columbia-Crawler@3e6c64fa37d5f95079a1f97d3a7f459ef15a765e
+columbia-crawler @ git+https://github.com/danfox127-dotcom/Columbia-Crawler@14c48151ce2c0501e893abbc029544754df66b00
