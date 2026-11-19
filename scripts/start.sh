@@ -32,4 +32,4 @@ printf '\nImage checker is starting at %s (it opens in your browser).\n' "$URL"
 printf 'Keep this window open while you use it; close it or press Ctrl-C to stop.\n\n'
 # Only reachable from this computer.
 exec .venv/bin/streamlit run app.py --server.port "$PORT" --server.address 127.0.0.1 \
-    --server.headless true --browser.gatherUsageStats false
+    --server.headless true --browser.gatherUsageStats false --client.toolbarMode viewer

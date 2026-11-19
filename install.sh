@@ -52,7 +52,8 @@ if [ "$(uname -s)" = "Linux" ]; then
     # The default Linux build of PyTorch bundles GPU libraries the app doesn't use.
     "$UV" pip install --quiet --python .venv/bin/python torch --index-url https://download.pytorch.org/whl/cpu
 fi
-"$UV" pip install --quiet --python .venv/bin/python -r requirements.txt
+# Precompiling makes the first launch quick instead of a minute-long blank page.
+"$UV" pip install --quiet --compile-bytecode --python .venv/bin/python -r requirements.txt
 
 # 4. Site data, if the published copy is newer than what's here.
 say "Getting the latest site data"
